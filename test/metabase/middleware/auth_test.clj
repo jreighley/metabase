@@ -6,7 +6,6 @@
              [util :as middleware.u]]
             [metabase.models.session :refer [Session]]
             [metabase.test.data.users :as test-users]
-            [metabase.util.date :as du]
             [ring.mock.request :as mock]
             [toucan.db :as db]
             [toucan.util.test :as tt])

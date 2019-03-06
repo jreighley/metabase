@@ -5,8 +5,8 @@
              [config :as config]
              [http-client :as http]
              [util :as u]]
-            [metabase.middleware.session :as mw.session]
             [metabase.core.initialization-status :as init-status]
+            [metabase.middleware.session :as mw.session]
             [metabase.models.user :as user :refer [User]]
             [toucan.db :as db])
   (:import clojure.lang.ExceptionInfo))
