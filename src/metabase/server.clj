@@ -14,6 +14,22 @@
            [org.eclipse.jetty.server Request Server]
            org.eclipse.jetty.server.handler.AbstractHandler))
 
+;; Since we're using core.async for some potentially blocking tasks (such as waiting for query responses) use a bigger
+;; thread pool than usual. (Default is 8). That way we won't be blocking requests because other requests are waiting
+;; for QP results. Default to 32 or whatever Clojure chose for the pooledExecutor, whichever is higher.
+;;
+;; (Yes, this seems like it could be a waste of memory, but since things are async now Jetty doesn't need as many
+;; threads to process responses; so we have some savings there; as we rework more code to be async, we can get away
+;; with a smaller threadpool)
+(System/setProperty
+ "clojure.core.async.pool-size"
+ (or
+  (System/getProperty "clojure.core.async.pool-size")
+  (str
+   (max
+    32
+    (.getPoolSize clojure.lang.Agent/pooledExecutor)))))
+
 (defn- jetty-ssl-config []
   (m/filter-vals
    some?
