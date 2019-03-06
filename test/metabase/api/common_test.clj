@@ -1,9 +1,12 @@
 (ns metabase.api.common-test
   (:require [clojure.core.async :as async]
-            [expectations :refer :all]
+            [expectations :refer [expect]]
             [metabase.api.common :as api :refer :all]
             [metabase.api.common.internal :refer :all]
-            [metabase.middleware :as mb-middleware]
+            [metabase.middleware
+             [exceptions :as mw.exceptions]
+             [misc :as mw.misc]
+             [security :as mw.security]]
             [metabase.test.data :refer :all]
             [metabase.util.schema :as su]))
 
@@ -14,7 +17,7 @@
   {:status  404
    :body    "Not found."
    :headers {"Cache-Control"                     "max-age=0, no-cache, must-revalidate, proxy-revalidate"
-             "Content-Security-Policy"           (-> @#'mb-middleware/content-security-policy-header vals first)
+             "Content-Security-Policy"           (-> @#'mw.security/content-security-policy-header vals first)
              "Content-Type"                      "text/plain"
              "Expires"                           "Tue, 03 Jul 2001 06:00:00 GMT"
              "Last-Modified"                     true ; this will be current date, so do update-in ... string?
@@ -26,8 +29,8 @@
 
 (defn- mock-api-fn [response-fn]
   ((-> response-fn
-       mb-middleware/catch-api-exceptions
-       mb-middleware/add-content-type)
+       mw.exceptions/catch-api-exceptions
+       mw.misc/add-content-type)
    {:uri "/api/my_fake_api_call"}))
 
 (defn- my-mock-api-fn []
@@ -63,7 +66,7 @@
 ;; otherwise let-404 should bind as expected
 (expect
   {:user {:name "Cam"}}
-  ((mb-middleware/catch-api-exceptions
+  ((mw.exceptions/catch-api-exceptions
     (fn [_]
       (let-404 [user {:name "Cam"}]
         {:user user})))
