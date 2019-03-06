@@ -1,13 +1,18 @@
 (ns metabase.server
-  (:require [clojure.string :as str]
+  (:require [clojure.core.async :as async]
+            [clojure.string :as str]
             [clojure.tools.logging :as log]
             [medley.core :as m]
             [metabase
              [config :as config]
              [util :as u]]
             [metabase.util.i18n :refer [trs]]
-            [ring.adapter.jetty :as ring-jetty])
-  (:import org.eclipse.jetty.server.Server))
+            [ring.adapter.jetty :as ring-jetty]
+            [ring.util.servlet :as servlet])
+  (:import javax.servlet.AsyncContext
+           [javax.servlet.http HttpServletRequest HttpServletResponse]
+           [org.eclipse.jetty.server Request Server]
+           org.eclipse.jetty.server.handler.AbstractHandler))
 
 (defn- jetty-ssl-config []
   (m/filter-vals
@@ -47,22 +52,57 @@
   ^Server []
   @instance*)
 
+(defn- exception-response [^HttpServletResponse response, ^AsyncContext context, ^Throwable e]
+  (.sendError response 500 (.getMessage e))
+  (.complete context))
+
+(defn- ^AbstractHandler async-proxy-handler [handler]
+  (proxy [AbstractHandler] []
+    (handle [_, ^Request base-request, ^HttpServletRequest request, ^HttpServletResponse response]
+      (let [^AsyncContext context (.startAsync request)
+            c                     (async/promise-chan)]
+        (async/go
+          (when-let [[response-map, ^Throwable e] (async/<! c)]
+            (async/close! c)
+            ;; TODO - not sure when the appropriate time to do this is
+            (.setHandled base-request true)
+            (if e
+              (exception-response response context e)
+              (servlet/update-servlet-response response context response-map))))
+
+        (let [request (servlet/build-request-map request)
+              respond (fn [response-map]
+                        (async/put! c [response-map]))
+              raise   (fn [e]
+                        (async/put! c [nil e]))]
+          (async/go
+            (handler request respond raise)))))))
+
+(defn- create-server
+  ^Server [handler options]
+  (doto ^Server (#'ring-jetty/create-server options)
+    (.setHandler (async-proxy-handler handler))))
+
 (defn start-web-server!
-  "Start the embedded Jetty web server."
-  [app]
+  "Start the embedded Jetty web server. Returns `:started` if a new server was started; `nil` if there was already a
+  running server."
+  [handler]
   (when-not (instance)
     ;; NOTE: we always start jetty w/ join=false so we can start the server first then do init in the background
-    (let [jetty-config (jetty-config)
-          new-server   (ring-jetty/run-jetty app (assoc jetty-config :join? false))]
-      (log-config jetty-config)
-      ;; if we didn't actually setting our new server instance as *THE* server then shut it down
-      (when-not (compare-and-set! instance* nil new-server)
-        (.stop new-server)))))
+    (let [config     (jetty-config)
+          new-server (create-server handler config)]
+      (log-config config)
+      ;; Only start the server if the newly created server becomes the official new server
+      ;; Don't JOIN yet -- we're doing other init in the background; we can join later
+      (when (compare-and-set! instance* nil new-server)
+        (.start new-server)
+        :started))))
 
 (defn stop-web-server!
-  "Stop the embedded Jetty web server."
+  "Stop the embedded Jetty web server. Returns `:stopped` if a server was stopped, `nil` if there was nothing to stop."
   []
   (let [[^Server old-server] (reset-vals! instance* nil)]
     (when old-server
       (log/info (trs "Shutting Down Embedded Jetty Webserver"))
-      (.stop old-server))))
+      (.stop old-server)
+      :stopped)))

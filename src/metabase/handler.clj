@@ -1,7 +1,6 @@
 (ns metabase.handler
   "Top-level Metabase Ring handler."
   (:require [metabase.middleware
-             [async :as mw.async]
              [auth :as mw.auth]
              [exceptions :as mw.exceptions]
              [json :as mw.json]
@@ -13,8 +12,7 @@
             [ring.middleware
              [cookies :refer [wrap-cookies]]
              [keyword-params :refer [wrap-keyword-params]]
-             [params :refer [wrap-params]]
-             [session :refer [wrap-session]]]))
+             [params :refer [wrap-params]]]))
 
 (def app
   "The primary entry point to the Ring HTTP server."
@@ -36,9 +34,8 @@
    mw.misc/maybe-set-site-url              ; set the value of `site-url` if it hasn't been set yet
    mw.misc/bind-user-locale                ; Binds *locale* for i18n
    wrap-cookies                            ; Parses cookies in the request map and assocs as :cookies
-   wrap-session                            ; reads in current HTTP session and sets :session/key
+   #_wrap-session                            ; reads in current HTTP session and sets :session key TODO - don't think we need this
    mw.misc/add-content-type                ; Adds a Content-Type header for any response that doesn't already have one
    mw.misc/wrap-gzip                       ; GZIP response if client can handle it
-   mw.async/handle-request-asynchronously
    ))
 ;; ▲▲▲ PRE-PROCESSING ▲▲▲ happens from BOTTOM-TO-TOP

@@ -47,14 +47,12 @@
 (defn- should-log-request? [{:keys [uri], :as request}]
   ;; don't log calls to /health or /util/logs because they clutter up the logs (especially the window in admin) with
   ;; useless lines
-  (or (not (middleware.u/api-call? request))
-      (= uri "/api/health")
-      (= uri "/api/util/logs")))
+  (and (middleware.u/api-call? request)
+       (not (#{"/api/health" "/api/util/logs"} uri))))
 
 (defn log-api-call
   "Logs info about request such as status code, number of DB calls, and time taken to complete."
   [handler]
-  ;; TODO - not 100% sure this actually works for async requests?
   (fn [request respond raise]
     (if-not (should-log-request? request)
       ;; non-API call or health or logs call, don't log it
@@ -62,9 +60,7 @@
       ;; API call, log info about it
       (let [start-time (System/nanoTime)]
         (db/with-call-counting [call-count]
-          (u/prog1 (handler request respond raise)
-            (log-response
-             request
-             <>
-             (du/format-nanoseconds (- (System/nanoTime) start-time))
-             (call-count))))))))
+          (let [respond (fn [response]
+                          (log-response request response (du/format-nanoseconds (- (System/nanoTime) start-time)) (call-count))
+                          (respond response))]
+            (handler request respond raise)))))))

@@ -27,7 +27,7 @@
   actors but still provides some information that will prove useful in debugging errors."
   [handler]
   (fn [request respond _]
-    (let [raise (fn [e]
+    (let [raise (fn [^Throwable e]
                   (respond {:status 400, :body (.getMessage e)}))]
       (try
         (handler request respond raise)
@@ -84,8 +84,7 @@
     (handler
      request
      respond
-     (fn [e]
-       (respond (api-exception-response e))))))
+     (comp respond api-exception-response))))
 
 
 (defn catch-uncaught-exceptions

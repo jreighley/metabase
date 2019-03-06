@@ -126,7 +126,8 @@
   {:expectations-options :after-run}
   []
   (log/info "Shutting down Metabase unit test runner")
-  (server/stop-web-server!))
+  (server/stop-web-server!)
+  (shutdown-agents))
 
 (defn call-with-test-scaffolding
   "Runs `test-startup` and ensures `test-teardown` is always called. This function is useful for running a test (or test

@@ -64,7 +64,7 @@
     (let [headers    (:headers request)
           parsed     (puppet-i18n/parse-http-accept-header (get headers "accept-language"))
           wanted     (mapv first parsed)
-          negotiated (puppet-i18n/negotiate-locale wanted (puppet-i18n/available-locales))]
+          negotiated ^java.util.Locale (puppet-i18n/negotiate-locale wanted (puppet-i18n/available-locales))]
       (puppet-i18n/with-user-locale negotiated
         (handler request respond raise)))))
 
