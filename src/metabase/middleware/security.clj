@@ -98,4 +98,8 @@
 (defn add-security-headers
   "Add HTTP security and cache-busting headers."
   [handler]
-  (middleware.u/modify-response-middleware-fn handler add-security-headers*))
+  (fn [request respond raise]
+    (handler
+     request
+     (comp respond (partial add-security-headers* request))
+     raise)))

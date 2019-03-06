@@ -3,7 +3,6 @@
   (:require [cheshire
              [core :as json]
              [generate :refer [add-encoder encode-str]]]
-            [metabase.middleware.util :as middleware.u]
             [metabase.util :as u]
             [ring.middleware.json :as ring.json]
             [ring.util
@@ -47,11 +46,8 @@
 
 
 ;;; +----------------------------------------------------------------------------------------------------------------+
-;;; |                                                JSON MIDDLEWARE                                                 |
+;;; |                                             Parsing JSON Requests                                              |
 ;;; +----------------------------------------------------------------------------------------------------------------+
-
-(defn- read-json [request]
-  (#'ring.json/read-json request {:keywords? true}))
 
 (defn wrap-json-body
   "Middleware that parses JSON in the body of a request. (This is basically a copy of `ring-json-middleware`, but
@@ -59,20 +55,17 @@
   ;; TODO - we should really just fork ring-json-middleware and put these changes in the fork, or submit this as a PR
   [handler]
   (fn
-    ([request]
-     (if-let [[valid? json] (read-json request)]
-       (if valid?
-         (handler (assoc request :body json))
-         ring.json/default-malformed-response)
-       (handler request)))
+    [request respond raise]
+    (if-let [[valid? json] (#'ring.json/read-json request {:keywords? true})]
+      (if valid?
+        (handler (assoc request :body json) respond raise)
+        (respond ring.json/default-malformed-response))
+      (handler request respond raise))))
 
-    ([request respond raise]
-     (if-let [[valid? json] (read-json request)]
-       (if valid?
-         (handler (assoc request :body json) respond raise)
-         (respond ring.json/default-malformed-response))
-       (handler request respond raise)))))
 
+;;; +----------------------------------------------------------------------------------------------------------------+
+;;; |                                            Streaming JSON Responses                                            |
+;;; +----------------------------------------------------------------------------------------------------------------+
 
 (defn- streamed-json-response
   "Write `RESPONSE-SEQ` to a PipedOutputStream as JSON, returning the connected PipedInputStream"
@@ -83,7 +76,7 @@
                  buffered-writer (BufferedWriter. output-writer)]
        (json/generate-stream response-seq buffered-writer opts)))))
 
-(defn- wrap-streamed-json-response [opts response]
+(defn- wrap-streamed-json-response* [opts response]
   (if-let [json-response (and (coll? (:body response))
                               (update-in response [:body] streamed-json-response opts))]
     (if (contains? (:headers json-response) "Content-Type")
@@ -100,4 +93,8 @@
   :pretty            - true if the JSON should be pretty-printed
   :escape-non-ascii  - true if non-ASCII characters should be escaped with \\u"
   [handler & [{:as opts}]]
-  (middleware.u/modify-response-middleware-fn handler (partial wrap-streamed-json-response opts)))
+  (fn [request respond raise]
+    (handler
+     request
+     (comp respond (partial wrap-streamed-json-response* opts))
+     raise)))

@@ -21,7 +21,8 @@
 (defn- jetty-config []
   (cond-> (m/filter-vals
            some?
-           {:port          (config/config-int :mb-jetty-port)
+           {:async?        true
+            :port          (config/config-int :mb-jetty-port)
             :host          (config/config-str :mb-jetty-host)
             :max-threads   (config/config-int :mb-jetty-maxthreads)
             :min-threads   (config/config-int :mb-jetty-minthreads)

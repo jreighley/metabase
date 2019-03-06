@@ -55,14 +55,14 @@
   "Logs info about request such as status code, number of DB calls, and time taken to complete."
   [handler]
   ;; TODO - not 100% sure this actually works for async requests?
-  (fn [request & async-args]
+  (fn [request respond raise]
     (if-not (should-log-request? request)
       ;; non-API call or health or logs call, don't log it
-      (apply handler request async-args)
+      (handler request respond raise)
       ;; API call, log info about it
       (let [start-time (System/nanoTime)]
         (db/with-call-counting [call-count]
-          (u/prog1 (apply handler request async-args)
+          (u/prog1 (handler request respond raise)
             (log-response
              request
              <>

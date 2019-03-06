@@ -8,12 +8,20 @@
             [metabase.test.data.users :as test-users]
             [metabase.util.date :as du]
             [ring.mock.request :as mock]
-            [toucan.db :as db]))
+            [toucan.db :as db]
+            [toucan.util.test :as tt])
+  (:import java.sql.Timestamp
+           java.util.UUID))
 
 ;; create a simple example of our middleware wrapped around a handler that simply returns the request
-(def ^:private auth-enforced-handler
-  (mw.session/wrap-current-user-id
-   (mw.auth/enforce-authentication identity)))
+(defn- auth-enforced-handler [request]
+  ((-> (fn [request respond _]
+         (respond request))
+       mw.auth/enforce-authentication
+       mw.session/wrap-current-user-id)
+   request
+   identity
+   (fn [e] (throw e))))
 
 
 (defn- request-with-session-id
@@ -26,19 +34,22 @@
 ;; no session-id in the request
 (expect
   middleware.u/response-unauthentic
-  (auth-enforced-handler (mock/request :get "/anyurl")))
+  (auth-enforced-handler
+   (mock/request :get "/anyurl")))
 
 (defn- random-session-id []
-  (str (java.util.UUID/randomUUID)))
+  (str (UUID/randomUUID)))
 
 
 ;; valid session ID
 (expect
   (test-users/user->id :rasta)
   (let [session-id (random-session-id)]
-    (db/simple-insert! Session, :id session-id, :user_id (test-users/user->id :rasta), :created_at (du/new-sql-timestamp))
-    (-> (auth-enforced-handler (request-with-session-id session-id))
-        :metabase-user-id)))
+    (tt/with-temp Session [_ {:id      session-id
+                              :user_id (test-users/user->id :rasta)}]
+      (-> (auth-enforced-handler
+           (request-with-session-id session-id))
+          :metabase-user-id))))
 
 
 ;; expired session-id
@@ -47,8 +58,12 @@
 (expect
   middleware.u/response-unauthentic
   (let [session-id (random-session-id)]
-    (db/simple-insert! Session, :id session-id, :user_id (test-users/user->id :rasta), :created_at (java.sql.Timestamp. 0))
-    (auth-enforced-handler (request-with-session-id session-id))))
+    (tt/with-temp Session [_ {:id      session-id
+                              :user_id (test-users/user->id :rasta)}]
+      (db/update-where! Session {:id session-id}
+        :created_at (Timestamp. 0))
+      (auth-enforced-handler
+       (request-with-session-id session-id)))))
 
 
 ;; inactive user session-id
@@ -58,15 +73,22 @@
 (expect
   middleware.u/response-unauthentic
   (let [session-id (random-session-id)]
-    (db/simple-insert! Session, :id session-id, :user_id (test-users/user->id :trashbird), :created_at (du/new-sql-timestamp))
-    (auth-enforced-handler (request-with-session-id session-id))))
+    (tt/with-temp Session [_ {:id      session-id
+                              :user_id (test-users/user->id :trashbird)}]
+      (auth-enforced-handler
+       (request-with-session-id session-id)))))
 
-;;  ===========================  TEST wrap-api-key middleware  ===========================
+
+;;; ------------------------------------------ TEST wrap-api-key middleware ------------------------------------------
 
 ;; create a simple example of our middleware wrapped around a handler that simply returns the request
 ;; this works in this case because the only impact our middleware has is on the request
-(def ^:private wrapped-api-key-handler
-  (mw.auth/wrap-api-key identity))
+(defn- wrapped-api-key-handler [request]
+  ((mw.auth/wrap-api-key
+    (fn [request respond _] (respond request)))
+   request
+   identity
+   (fn [e] (throw e))))
 
 
 ;; no apikey in the request
@@ -85,12 +107,14 @@
     (mock/header (mock/request :get "/anyurl") @#'mw.auth/metabase-api-key-header "foobar"))))
 
 
-;;  ===========================  TEST enforce-api-key middleware  ===========================
-
+;;; ---------------------------------------- TEST enforce-api-key middleware -----------------------------------------
 
 ;; create a simple example of our middleware wrapped around a handler that simply returns the request
-(def ^:private api-key-enforced-handler
-  (mw.auth/enforce-api-key (constantly {:success true})))
+(defn- api-key-enforced-handler [request]
+  ((mw.auth/enforce-api-key (fn [_ respond _] (respond {:success true})))
+   request
+   identity
+   (fn [e] (throw e))))
 
 
 (defn- request-with-api-key

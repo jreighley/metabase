@@ -24,7 +24,11 @@
   "Add an appropriate Content-Type header to response if it doesn't already have one. Most responses should already
   have one, so this is a fallback for ones that for one reason or another do not."
   [handler]
-  (middleware.u/modify-response-middleware-fn handler add-content-type*))
+  (fn [request respond raise]
+    (handler
+     request
+     (comp respond (partial add-content-type* request))
+     raise)))
 
 
 ;;; ------------------------------------------------ SETTING SITE-URL ------------------------------------------------
@@ -39,13 +43,14 @@
     (when-not (public-settings/site-url)
       (when-let [site-url (or origin host)]
         (log/info "Setting Metabase site URL to" site-url)
-        (public-settings/site-url site-url))))
-  request)
+        (public-settings/site-url site-url)))))
 
 (defn maybe-set-site-url
   "Middleware to set the `site-url` Setting if it's unset the first time a request is made."
   [handler]
-  (middleware.u/modify-request-middleware-fn handler maybe-set-site-url*))
+  (fn [request respond raise]
+    (maybe-set-site-url* request)
+    (handler request respond raise)))
 
 
 ;;; ------------------------------------------------------ i18n ------------------------------------------------------
@@ -55,13 +60,13 @@
   `puppetlabs.i18n.core/locale-negotiator`, but reworked to handle async-style requests as well.)"
   ;; TODO - We should really just fork puppet i18n and put these changes there, or PR
   [handler]
-  (fn [request & async-args]
+  (fn [request respond raise]
     (let [headers    (:headers request)
           parsed     (puppet-i18n/parse-http-accept-header (get headers "accept-language"))
           wanted     (mapv first parsed)
           negotiated (puppet-i18n/negotiate-locale wanted (puppet-i18n/available-locales))]
       (puppet-i18n/with-user-locale negotiated
-        (apply handler request async-args)))))
+        (handler request respond raise)))))
 
 
 ;;; ------------------------------------------------------ GZIP ------------------------------------------------------
@@ -87,4 +92,8 @@
   `ring.middleware.gzip`, but handles async requests as well."
   ;; TODO - we should really just fork the dep in question and put these changes there, or PR
   [handler]
-  (middleware.u/modify-response-middleware-fn handler wrap-gzip*))
+  (fn [request respond raise]
+    (handler
+     request
+     (comp respond (partial wrap-gzip* request))
+     raise)))

@@ -5,7 +5,6 @@
              [db :as mdb]]
             [metabase.api.common :refer [*current-user* *current-user-id* *current-user-permissions-set* *is-superuser?*]]
             [metabase.core.initialization-status :as init-status]
-            [metabase.middleware.util :as middleware.u]
             [metabase.models
              [session :refer [Session]]
              [user :as user :refer [User]]]
@@ -26,7 +25,8 @@
    We first check the request :cookies for `metabase.SESSION_ID`, then if no cookie is found we look in the
    http headers for `X-METABASE-SESSION`.  If neither is found then then no keyword is bound to the request."
   [handler]
-  (middleware.u/modify-request-middleware-fn handler wrap-session-id*))
+  (fn [request respond raise]
+    (handler (wrap-session-id* request) respond raise)))
 
 (defn- session-with-id
   "Fetch a session with SESSION-ID, and include the User ID and superuser status associated with it."
@@ -63,13 +63,12 @@
 (defn wrap-current-user-id
   "Add `:metabase-user-id` to the request if a valid session token was passed."
   [handler]
-  (middleware.u/modify-request-middleware-fn handler wrap-current-user-id*))
-
-
+  (fn [request respond raise]
+    (handler (wrap-current-user-id* request) respond raise)))
 
 
 (def ^:private current-user-fields
-  (vec (cons User user/admin-or-self-visible-columns)))
+  (into [User] user/admin-or-self-visible-columns))
 
 (defn- find-user [user-id]
   (db/select-one current-user-fields, :id user-id))
@@ -95,6 +94,6 @@
   *  `*is-superuser?*`               Boolean stating whether current user is a superuser.
   *  `current-user-permissions-set*` delay that returns the set of permissions granted to the current user from DB"
   [handler]
-  (fn [request & async-args]
+  (fn [request respond raise]
     (with-current-user request
-      (apply handler request async-args))))
+      (handler request respond raise))))

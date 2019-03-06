@@ -4,8 +4,8 @@
             [metabase
              [config :as config]
              [http-client :as http]
-             [middleware :as middleware]
              [util :as u]]
+            [metabase.middleware.session :as mw.session]
             [metabase.core.initialization-status :as init-status]
             [metabase.models.user :as user :refer [User]]
             [toucan.db :as db])
@@ -158,10 +158,12 @@
 (defn do-with-test-user
   "Call `f` with various `metabase.api.common` dynamic vars bound to the test User named by `user-kwd`."
   [user-kwd f]
-  ((middleware/bind-current-user (fn [_] (f)))
+  ((mw.session/bind-current-user (fn [_ respond _] (respond (f))))
    (let [user-id (user->id user-kwd)]
      {:metabase-user-id user-id
-      :is-superuser?    (db/select-one-field :is_superuser User :id user-id)})))
+      :is-superuser?    (db/select-one-field :is_superuser User :id user-id)})
+   identity
+   (fn [e] (throw e))))
 
 (defmacro with-test-user
   "Call `body` with various `metabase.api.common` dynamic vars like `*current-user*` bound to the test User named by

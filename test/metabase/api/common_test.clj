@@ -28,10 +28,14 @@
              "X-XSS-Protection"                  "1; mode=block"}})
 
 (defn- mock-api-fn [response-fn]
-  ((-> response-fn
+  ((-> (fn [request respond _]
+         (respond (response-fn request)))
+       mw.exceptions/catch-uncaught-exceptions
        mw.exceptions/catch-api-exceptions
        mw.misc/add-content-type)
-   {:uri "/api/my_fake_api_call"}))
+   {:uri "/api/my_fake_api_call"}
+   identity
+   (fn [e] (throw e))))
 
 (defn- my-mock-api-fn []
   (mock-api-fn
@@ -67,10 +71,13 @@
 (expect
   {:user {:name "Cam"}}
   ((mw.exceptions/catch-api-exceptions
-    (fn [_]
-      (let-404 [user {:name "Cam"}]
-        {:user user})))
-   nil))
+    (fn [_ respond _]
+      (respond
+       (let-404 [user {:name "Cam"}]
+         {:user user}))))
+   nil
+   identity
+   (fn [e] (throw e))))
 
 
 (defmacro ^:private expect-expansion

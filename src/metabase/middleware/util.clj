@@ -25,21 +25,3 @@
   [{:keys [uri query-string]}]
   ;; match requests that are js/css and have a cache-busting query string
   (and query-string (re-matches #"^/app/dist/.*\.(js|css)$" uri)))
-
-(defn modify-request-middleware-fn
-  "Helper function to create middleware that applies `modify-request` to incoming requests and handles both sync and
-  async request styles."
-  [handler modify-request]
-  (fn [request & async-args]
-    (apply handler (modify-request request) async-args)))
-
-(defn modify-response-middleware-fn
-  "Helper function to create middleware that applies `(modify-response request response)` to outgoing responses and
-  handles both sync and async request styles."
-  [handler modify-response]
-  (fn
-    ([request]
-     (modify-response request (handler request)))
-
-    ([request respond raise]
-     (handler request (comp respond (partial modify-response request)) raise))))
