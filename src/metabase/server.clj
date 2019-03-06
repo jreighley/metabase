@@ -9,7 +9,8 @@
             [metabase.util.i18n :refer [trs]]
             [ring.adapter.jetty :as ring-jetty]
             [ring.util.servlet :as servlet])
-  (:import javax.servlet.AsyncContext
+  (:import java.util.concurrent.ThreadPoolExecutor
+           javax.servlet.AsyncContext
            [javax.servlet.http HttpServletRequest HttpServletResponse]
            [org.eclipse.jetty.server Request Server]
            org.eclipse.jetty.server.handler.AbstractHandler))
@@ -28,7 +29,7 @@
   (str
    (max
     32
-    (.getPoolSize clojure.lang.Agent/pooledExecutor)))))
+    (.getPoolSize ^ThreadPoolExecutor clojure.lang.Agent/pooledExecutor)))))
 
 (defn- jetty-ssl-config []
   (m/filter-vals
